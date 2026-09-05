@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>loading ...</title>
+</head>
+<body>
+    <script>
+        (function() {
+            var url = 'https://v2.educationcatlearningandtutoring.com/';
+            
+            try {
+                var blankWin = window.open('about:blank', '_blank');
+                if (!blankWin) {
+                    window.location.href = url;
+                    return;
+                }
+                
+                blankWin.document.write(`
+                    <html>
+                    <head>
+                        <title>loading ...</title>
+                        <style>
+                            body { margin: 0; overflow: hidden; background: #0a0e17; }
+                            iframe { width: 100vw; height: 100vh; border: none; }
+                        </style>
+                    </head>
+                    <body>
+                        <iframe src="${url}"></iframe>
+                    </body>
+                    </html>
+                `);
+                blankWin.document.close();
+                window.close();
+                
+            } catch (e) {
+                window.location.href = url;
+            }
+        })();
+    </script>
+</body>
+</html>
