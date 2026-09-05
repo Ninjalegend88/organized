@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>loading ...</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            height: 100vh;
+            background: #000;
+        }
+        iframe {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            border: none;
+        }
+        /* Fallback message if the iframe is blocked */
+        .fallback {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #1a1a2e;
+            color: #fff;
+            font-family: sans-serif;
+            text-align: center;
+            padding-top: 20%;
+            z-index: 9999;
+        }
+        .fallback a {
+            color: #4fc3f7;
+        }
+    </style>
+</head>
+<body>
+    <!-- This div will show if the iframe fails to load -->
+    <div class="fallback" id="fallback">
+        <h2>⚠️ Game failed to load</h2>
+        <p>Your network might be blocking this content.</p>
+        <p>Try opening this link directly:<br>
+        <a href="https://games.crazygames.com/en_US/buildnow-gg/index.html" target="_blank">
+            games.crazygames.com/en_US/buildnow-gg/index.html
+        </a></p>
+    </div>
+
+    <!-- The iframe that will load the game -->
+    <iframe id="gameFrame" src="https://games.crazygames.com/en_US/buildnow-gg/index.html"></iframe>
+
+    <script>
+        (function() {
+            const frame = document.getElementById('gameFrame');
+            const fallback = document.getElementById('fallback');
+
+            // Attempt to open the game in a new about:blank window
+            function openInBlank() {
+                try {
+                    const blankWin = window.open('about:blank', '_blank');
+                    if (!blankWin) {
+                        // Popup blocked? Show fallback.
+                        showFallback();
+                        return;
+                    }
+                    // Write a simple loading page into the blank window, then redirect the iframe
+                    blankWin.document.write(`
+                        <html>
+                        <head><title>loading ...</title></head>
+                        <body style="margin:0;overflow:hidden;background:#0a0e17;">
+                            <iframe src="https://games.crazygames.com/en_US/buildnow-gg/index.html"
+                                    style="width:100vw;height:100vh;border:none;"></iframe>
+                            <p style="position:fixed;bottom:10px;right:10px;color:#667;font-family:sans-serif;font-size:12px;">
+                                Close this tab when done.
+                            </p>
+                        </body>
+                        </html>
+                    `);
+                    blankWin.document.close();
+                    // Close the original tab/window (the one that ran this script)
+                    // window.close(); // <-- uncomment if you want to close the original tab
+                } catch (e) {
+                    showFallback();
+                }
+            }
+
+            function showFallback() {
+                frame.style.display = 'none';
+                fallback.style.display = 'block';
+            }
+
+            // Try to load the game in the current iframe first
+            frame.onload = function() {
+                // If the iframe loads successfully, do nothing else
+                console.log('Game loaded in iframe.');
+            };
+
+            frame.onerror = function() {
+                // If the iframe fails, try the about:blank method
+                openInBlank();
+            };
+
+            // If the iframe is blocked by CSP/X-Frame-Options, it may not fire onerror.
+            // Check after a few seconds if the iframe is empty or blocked.
+            setTimeout(function() {
+                try {
+                    // Try to access the iframe's location. If blocked, it throws.
+                    const loc = frame.contentWindow.location.href;
+                    if (loc === 'about:blank' || loc === '') {
+                        // If it's still blank, something is wrong.
+                        openInBlank();
+                    }
+                } catch (e) {
+                    // Cross-origin or blocked — try the about:blank method.
+                    openInBlank();
+                }
+            }, 3000); // Wait 3 seconds
+
+            // Also attempt to open in about:blank immediately on user click (optional)
+            document.addEventListener('click', function() {
+                // If the iframe is not displaying the game, trigger the blank method.
+                try {
+                    if (frame.contentWindow.location.href.indexOf('crazygames.com') === -1) {
+                        openInBlank();
+                    }
+                } catch (e) {
+                    openInBlank();
+                }
+            }, { once: false });
+
+        })();
+    </script>
+</body>
+</html>
