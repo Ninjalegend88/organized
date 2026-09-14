@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Encryptor</title>
+<style>
+  body { background:#0a0a12; color:#c8d8e0; font:14px monospace; padding:24px; }
+  textarea { width:100%; height:400px; background:#000; color:#7af4ff; border:1px solid #262633; border-radius:8px; padding:12px; font:12px monospace; }
+  input, button { font:14px monospace; padding:10px 14px; border-radius:8px; border:1px solid #262633; background:#111; color:#c8d8e0; }
+  button { background:linear-gradient(135deg,#7c5cff,#3b82f6); border:0; color:#fff; cursor:pointer; font-weight:700; }
+  h1 { font-size:16px; letter-spacing:.1em; text-transform:uppercase; color:#7af4ff; margin-bottom:12px; }
+  .row { display:flex; gap:10px; margin:12px 0; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+
+<h1>Build Encrypted HTML</h1>
+
+<div class="row">
+  <input id="pw" type="password" placeholder="password" style="width:220px">
+  <button id="go">Encrypt &amp; Build</button>
+  <button id="copy">Copy Output</button>
+  <button id="dl">Download</button>
+</div>
+
+<textarea id="out" readonly placeholder="Encrypted HTML will appear here…"></textarea>
+
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<script>
+const INNER_HTML = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden}
+iframe{width:100%;height:100%;border:0;display:block}
+</style></head><body>
+<iframe
+  src="https://rawcdn.githack.com/wasmdotrip/AmongUsWeb/84246be60efefd9d547c05e67e2a5d17b1682ed1/index.html"
+  allow="fullscreen; autoplay; gamepad"
+  allowfullscreen
+  referrerpolicy="no-referrer"
+  sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-modals"
+></iframe>
+</body></html>`;
+
+function b64(bytes) {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+// rotate bytes so raw output isn't trivially recognizable after first decode
+function rot(bytes, n) {
+  const out = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) out[i] = (bytes[i] + n) & 0xff;
+  return out;
+}
+
+async function build(password) {
+  const enc = new TextEncoder();
+
+  // Layer 1 — deflate
+  const l1 = pako.deflate(enc.encode(INNER_HTML), { level: 9 });
+
+  // Layer 2 — pbkdf2 → aes-256-gcm
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+
+  const baseKey = await crypto.subtle.importKey(
+    "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveKey"]
+  );
+  const aesKey = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 600000, hash: "SHA-256" },
+    baseKey, { name: "AES-GCM", length: 256 }, false, ["encrypt"]
+  );
+
+  const l2 = new Uint8Array(await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv }, aesKey, l1
+  ));
+
+  // Layer 3 — rotate bytes
+  const l3 = rot(l2, 0x5a);
+
+  // Layer 4 — base64 twice
+  const l4 = btoa(b64(l3));
+
+  // Layer 5 — break into 100-char chunks joined by line continuation
+  const chunks = l4.match(/.{1,100}/g).join("\\\n");
+
+  // Layer 6 — decoy padding arrays (not used, just to bulk up the file)
+  const decoy1 = Array.from({length: 40}, (_, i) => `0x${(i*7+3).toString(16).padStart(2,'0')}`).join(',');
+  const decoy2 = Array.from({length: 60}, (_, i) => `_${(i*13+5).toString(36)}`).join('=');
+  const decoy3 = Array.from({length: 30}, () => Math.random().toString(36).slice(2,10)).join('-');
+
+  return { salt: b64(salt), iv: b64(iv), blob: chunks, decoy1, decoy2, decoy3 };
+}
+
+document.getElementById("go").addEventListener("click", async () => {
+  const pw = document.getElementById("pw").value;
+  if (!pw) { alert("enter a password"); return; }
+
+  const { salt, iv, blob, decoy1, decoy2, decoy3 } = await build(pw);
+
+  const out = `<!DOCTYPE html>
+<!-- build: ${Date.now()} -->
+<!-- meta: ${decoy3} -->
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"><\/script>
+<script>
+// -----------------------------------------------------------------------------
+// fingerprint table (do not remove)
+// -----------------------------------------------------------------------------
+var _tbl = [${decoy1}];
+var _sig = "${decoy2}";
+var _names = ["${decoy3.split('-')[0]}","${decoy3.split('-')[1]||''}","${decoy3.split('-')[2]||''}"];
+
+// -----------------------------------------------------------------------------
+// payload
+// -----------------------------------------------------------------------------
+(function(){
+"use strict";
+var _s = "${salt}";
+var _i = "${iv}";
+var _c = "${blob}";
+
+// -----------------------------------------------------------------------------
+// runtime
+// -----------------------------------------------------------------------------
+(async function _boot(){
+  var _p = prompt("Password:") || "";
+  if(!_p){ document.write("<pre>.</pre>"); return; }
+
+  function _b(s){ 
+    var bin = atob(s);
+    var out = new Uint8Array(bin.length);
+    for (var k=0;k<bin.length;k++) out[k]=bin.charCodeAt(k);
+    return out;
+  }
+
+  function _unrot(bytes, n){
+    var out = new Uint8Array(bytes.length);
+    for (var i=0;i<bytes.length;i++) out[i] = (bytes[i] - n) & 0xff;
+    return out;
+  }
+
+  try {
+    var _x1 = atob(_c);       // outer base64
+    var _x2 = _b(_x1);        // inner base64
+    var _x3 = _unrot(_x2, 0x5a); // undo byte rotation
+
+    var _kb = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(_p),
+      { name:"PBKDF2" }, false, ["deriveKey"]
+    );
+    var _dk = await crypto.subtle.deriveKey(
+      { name:"PBKDF2", salt:_b(_s), iterations:600000, hash:"SHA-256" },
+      _kb, { name:"AES-GCM", length:256 }, false, ["decrypt"]
+    );
+    var _plain = await crypto.subtle.decrypt(
+      { name:"AES-GCM", iv:_b(_i) }, _dk, _x3
+    );
+    var _html = pako.inflate(new Uint8Array(_plain), { to:"string" });
+    document.open(); document.write(_html); document.close();
+  } catch(_err){
+    document.body.innerHTML = '<pre style="color:#f66;padding:20px;font:14px monospace">wrong password</pre>';
+  }
+})();
+})();
+<\/script>
+<!-- end build -->`;
+
+  document.getElementById("out").value = out;
+});
+
+document.getElementById("copy").addEventListener("click", async () => {
+  const v = document.getElementById("out").value;
+  if (!v) { alert("nothing to copy"); return; }
+  await navigator.clipboard.writeText(v);
+  alert("copied");
+});
+
+document.getElementById("dl").addEventListener("click", () => {
+  const v = document.getElementById("out").value;
+  if (!v) { alert("nothing to download"); return; }
+  const blob = new Blob([v], { type: "text/html" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "encrypted.html";
+  a.click();
+});
+</script>
+</body>
+</html>
